@@ -18,6 +18,7 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'https://nest-chat-frontend.vercel.app',
+      'https://ms-chat-one.vercel.app',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
