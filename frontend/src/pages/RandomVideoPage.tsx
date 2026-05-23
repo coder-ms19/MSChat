@@ -89,7 +89,7 @@ const RandomVideoPage = () => {
     // Initialize Socket
     useEffect(() => {
         
-        const newSocket = io(`/random-chat`, {
+        const newSocket = io(`${import.meta.env.VITE_SOCKET_URL}/random-chat`, {
             transports: ['websocket'],
             auth: {
                 token: localStorage.getItem('token'),

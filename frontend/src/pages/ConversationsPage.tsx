@@ -29,7 +29,7 @@ export default function ConversationsPage() {
         if (!user) return;
 
         
-        const newSocket = io("/", {
+        const newSocket = io(import.meta.env.VITE_SOCKET_URL, {
             autoConnect: true,
             auth: {
                 token: localStorage.getItem('token')

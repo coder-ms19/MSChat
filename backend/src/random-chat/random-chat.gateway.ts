@@ -32,8 +32,12 @@ interface IceCandidateBatch {
 @WebSocketGateway({
     namespace: 'random-chat',
     cors: {
-        origin: '*',
-        credentials: true
+        origin: [
+            'http://localhost:5173',
+            'https://nest-chat-frontend.vercel.app',
+            'https://ms-chat-one.vercel.app'
+        ],
+        credentials: true,
     },
     transports: ['websocket', 'polling'],
     // Optimize for high traffic

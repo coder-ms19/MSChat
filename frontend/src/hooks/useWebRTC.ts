@@ -87,7 +87,7 @@ export const useWebRTC = (userId: string, username: string) => {
    * Initialize Socket.IO connection
    */
   useEffect(() => {
-    const newSocket = io(`/call`, {
+    const newSocket = io(`${import.meta.env.VITE_SOCKET_URL}/call`, {
       transports: ["websocket"],
       auth: {
         token: localStorage.getItem("token"),

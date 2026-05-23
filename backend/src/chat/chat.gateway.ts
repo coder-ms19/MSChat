@@ -1,5 +1,3 @@
-
-
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -14,7 +12,14 @@ import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: {
+    origin: [
+      'http://localhost:5173',
+      'https://nest-chat-frontend.vercel.app',
+      'https://ms-chat-one.vercel.app'
+    ],
+    credentials: true,
+  },
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -23,15 +28,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private chatService: ChatService,
     private usersService: UsersService,
-    private jwtService: JwtService
-  ) { }
+    private jwtService: JwtService,
+  ) {}
 
   async handleConnection(client: Socket) {
     try {
       console.log(`[ChatGateway] Connection attempt: ${client.id}`);
 
       // Authenticate user from token in query or auth header
-      const token = client.handshake.auth.token || client.handshake.headers.authorization?.split(' ')[1];
+      const token =
+        client.handshake.auth.token ||
+        client.handshake.headers.authorization?.split(' ')[1];
 
       if (!token) {
         console.warn(`[ChatGateway] No token for client: ${client.id}`);
@@ -42,9 +49,14 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Verify token - explicitly pass secret ensures it works even if module config is quirky
       let payload;
       try {
-        payload = this.jwtService.verify(token, { secret: process.env.JWT_ACCESS_SECRET });
+        payload = this.jwtService.verify(token, {
+          secret: process.env.JWT_ACCESS_SECRET,
+        });
       } catch (verifyErr) {
-        console.error(`[ChatGateway] Token verification failed for ${client.id}:`, verifyErr.message);
+        console.error(
+          `[ChatGateway] Token verification failed for ${client.id}:`,
+          verifyErr.message,
+        );
         return;
       }
 
@@ -53,7 +65,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.data.userId = userId;
       client.data.username = payload.username; // Or fetch from DB if needed
 
-      console.log(`[ChatGateway] Authenticated user: ${userId} (${payload.username})`);
+      console.log(
+        `[ChatGateway] Authenticated user: ${userId} (${payload.username})`,
+      );
 
       // Set status to online
       await this.usersService.setOnlineStatus(userId, true);
@@ -63,10 +77,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.emit('user-presence-update', {
         userId,
         isOnline: true,
-        lastSeen: null
+        lastSeen: null,
       });
       console.log(`[ChatGateway] Broadcasted presence update for ${userId}`);
-
     } catch (e) {
       console.error('[ChatGateway] Connection error', e);
       // client.disconnect();
@@ -83,7 +96,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.emit('user-presence-update', {
         userId,
         isOnline: false,
-        lastSeen: new Date()
+        lastSeen: new Date(),
       });
 
       console.log(`User disconnected: ${userId}`);
@@ -141,7 +154,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() conversationId: string,
     @ConnectedSocket() client: Socket,
   ) {
-    console.log("client join", client.data);
+    console.log('client join', client.data);
     client.join(conversationId);
   }
 
@@ -155,7 +168,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { messageId, userId } = data;
 
     try {
-      const result = await this.chatService.markMessageAsDelivered(messageId, userId);
+      const result = await this.chatService.markMessageAsDelivered(
+        messageId,
+        userId,
+      );
 
       if (result) {
         // Get the message to find conversation
@@ -182,7 +198,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { messageId, userId } = data;
 
     try {
-      const result = await this.chatService.markMessageAsRead(messageId, userId);
+      const result = await this.chatService.markMessageAsRead(
+        messageId,
+        userId,
+      );
 
       if (result) {
         // Get the message to find conversation
@@ -224,7 +243,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('typing')
   handleTyping(
-    @MessageBody() data: { conversationId: string; userId: string; username: string; avatarUrl?: string },
+    @MessageBody()
+    data: {
+      conversationId: string;
+      userId: string;
+      username: string;
+      avatarUrl?: string;
+    },
     @ConnectedSocket() client: Socket,
   ) {
     const { conversationId, userId, username, avatarUrl } = data;
@@ -251,4 +276,3 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 }
-
