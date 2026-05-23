@@ -1,0 +1,324 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                String             @id @default(uuid())
+  username          String             @unique
+  email             String             @unique
+  password          String? // Optional for OAuth users
+  avatarUrl         String?
+  bio               String?
+  role              Role               @default(USER)
+  provider          AuthProvider?      @default(LOCAL) // OAuth provider
+  providerId        String? // OAuth provider user ID
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  isOnline          Boolean            @default(false)
+  lastSeen          DateTime?
+  comments          Comment[]
+  ownedGroups       Conversation[]     @relation("GroupOwner")
+  conversations     ConversationUser[]
+  conversationReads ConversationRead[]
+  followers         Follow[]           @relation("UserFollowers")
+  following         Follow[]           @relation("UserFollowing")
+  likes             Like[]
+  messages          Message[]
+  messageReads      MessageRead[]
+  posts             Post[]
+  initiatedCalls    Call[]             @relation("CallInitiator")
+  callParticipants  CallParticipant[]
+
+  @@index([username])
+  @@index([deletedAt])
+  @@index([providerId])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("UserFollowers", fields: [followerId], references: [id])
+  following   User     @relation("UserFollowing", fields: [followingId], references: [id])
+
+  @@id([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+}
+
+model Conversation {
+  id                String             @id @default(uuid())
+  name              String?
+  iconUrl           String? // Group/conversation icon
+  type              ConversationType   @default(PRIVATE)
+  ownerId           String?
+  isGroup           Boolean?
+  lastMessageId     String?            @unique
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+  owner             User?              @relation("GroupOwner", fields: [ownerId], references: [id])
+  users             ConversationUser[]
+  conversationReads ConversationRead[]
+  messages          Message[]          @relation("ChatMessages")
+  calls             Call[]
+
+  @@index([ownerId])
+}
+
+model ConversationUser {
+  conversationId String
+  userId         String
+  joinedAt       DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@id([conversationId, userId])
+}
+
+model Message {
+  id             String        @id @default(uuid())
+  conversationId String
+  senderId       String
+  content        String?
+  replyToId      String?
+  createdAt      DateTime      @default(now())
+  deletedAt      DateTime?
+  attachments    Attachment[]
+  conversation   Conversation  @relation("ChatMessages", fields: [conversationId], references: [id])
+  sender         User          @relation(fields: [senderId], references: [id])
+  replyTo        Message?      @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies        Message[]     @relation("MessageReplies")
+  reads          MessageRead[]
+
+  @@index([conversationId, createdAt])
+  @@index([replyToId])
+}
+
+model MessageRead {
+  messageId   String
+  userId      String
+  deliveredAt DateTime? // Set when message is delivered to user's device
+  readAt      DateTime? // Set when user actually reads the message
+  message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([messageId, userId])
+  @@index([userId, readAt]) // Optimize queries for user's read messages
+  @@index([userId, deliveredAt]) // Optimize queries for user's delivered messages
+}
+
+// Track last read message per user per conversation for efficient unread counts
+model ConversationRead {
+  conversationId    String
+  userId            String
+  lastReadMessageId String?
+  lastReadAt        DateTime     @default(now())
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, lastReadAt])
+}
+
+model Post {
+  id          String       @id @default(uuid())
+  title       String
+  content     String
+  authorId    String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+  attachments Attachment[]
+  comments    Comment[]
+  likes       Like[]
+  author      User         @relation(fields: [authorId], references: [id])
+  stats       PostStats?
+
+  @@index([authorId, createdAt])
+}
+
+model Attachment {
+  id        String    @id @default(uuid())
+  url       String
+  key       String
+  type      MediaType
+  mimeType  String
+  size      Int
+  postId    String?
+  messageId String?
+  createdAt DateTime  @default(now())
+  message   Message?  @relation(fields: [messageId], references: [id])
+  post      Post?     @relation(fields: [postId], references: [id])
+
+  @@index([postId])
+  @@index([messageId])
+}
+
+model Comment {
+  id        String    @id @default(uuid())
+  text      String
+  postId    String
+  userId    String
+  parentId  String?
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+  parent    Comment?  @relation("CommentTree", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentTree")
+  post      Post      @relation(fields: [postId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+}
+
+model Like {
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@id([postId, userId])
+}
+
+model PostStats {
+  postId        String   @id
+  likeCount     Int      @default(0)
+  commentCount  Int      @default(0)
+  viewCount     Int      @default(0)
+  score         Float    @default(0)
+  lastUpdatedAt DateTime @updatedAt
+  post          Post     @relation(fields: [postId], references: [id])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  GITHUB
+}
+
+enum ConversationType {
+  PRIVATE
+  GROUP
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  FILE
+  AUDIO
+}
+
+// ==================== CALLING SYSTEM MODELS ====================
+
+model Call {
+  id             String     @id @default(uuid())
+  conversationId String? // Link to existing conversation (optional)
+  callType       CallType // AUDIO_1TO1, VIDEO_1TO1, AUDIO_GROUP, VIDEO_GROUP
+  initiatorId    String // User who started the call
+  status         CallStatus @default(CALLING)
+  startedAt      DateTime   @default(now())
+  endedAt        DateTime?
+  duration       Int? // Duration in seconds
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  // Relations
+  initiator    User              @relation("CallInitiator", fields: [initiatorId], references: [id])
+  conversation Conversation?     @relation(fields: [conversationId], references: [id])
+  participants CallParticipant[]
+  events       CallEvent[]
+
+  @@index([conversationId])
+  @@index([initiatorId])
+  @@index([status])
+  @@index([startedAt])
+}
+
+model CallParticipant {
+  id         String                @id @default(uuid())
+  callId     String
+  userId     String
+  joinedAt   DateTime? // When they joined
+  leftAt     DateTime? // When they left
+  status     CallParticipantStatus @default(INVITED)
+  isMuted    Boolean               @default(false)
+  isVideoOff Boolean               @default(false)
+
+  // Relations
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([callId, userId])
+  @@index([callId])
+  @@index([userId])
+}
+
+model CallEvent {
+  id        String        @id @default(uuid())
+  callId    String
+  userId    String? // User who triggered event
+  eventType CallEventType
+  metadata  Json? // Additional event data
+  createdAt DateTime      @default(now())
+
+  // Relations
+  call Call @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  @@index([callId])
+  @@index([createdAt])
+}
+
+enum CallType {
+  AUDIO_1TO1
+  VIDEO_1TO1
+  AUDIO_GROUP
+  VIDEO_GROUP
+}
+
+enum CallStatus {
+  CALLING // Initiating call
+  RINGING // Ringing on recipient side
+  ACTIVE // Call in progress
+  ENDED // Call ended normally
+  REJECTED // Call rejected by recipient
+  MISSED // Call not answered
+  FAILED // Technical failure
+}
+
+enum CallParticipantStatus {
+  INVITED // Invited but not responded
+  RINGING // Phone is ringing
+  JOINED // Actively in call
+  LEFT // Left the call
+  REJECTED // Rejected the call
+  MISSED // Didn't answer
+}
+
+enum CallEventType {
+  CALL_INITIATED
+  CALL_RINGING
+  CALL_ACCEPTED
+  CALL_REJECTED
+  CALL_ENDED
+  PARTICIPANT_JOINED
+  PARTICIPANT_LEFT
+  PARTICIPANT_MUTED
+  PARTICIPANT_UNMUTED
+  VIDEO_ENABLED
+  VIDEO_DISABLED
+  CALL_FAILED
+}
